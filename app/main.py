@@ -34,8 +34,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.mount("/", StaticFiles(directory=str(STATIC_DIR), html=True), name="static")
-
 _MODEL_CACHE = {}
 
 
@@ -54,12 +52,7 @@ def ffmpeg_ready() -> bool:
         return False
 
 
-@app.get("/api/health", response_model=HealthResponse)
-def health() -> HealthResponse:
-    return HealthResponse(ok=True, whisper_ready=WhisperModel is not None, ffmpeg_ready=ffmpeg_ready())
-
-
-def get_model(model_size: str) -> WhisperModel:
+def get_model(model_size: str):
     if WhisperModel is None:
         raise HTTPException(status_code=500, detail="faster-whisper 未安装。请先安装依赖。")
     if model_size not in _MODEL_CACHE:
@@ -73,6 +66,9 @@ def format_ts(seconds: float) -> str:
     seconds = max(0, seconds)
     whole = int(seconds)
     ms = int(round((seconds - whole) * 1000))
+    if ms == 1000:
+        whole += 1
+        ms = 0
     s = whole % 60
     m = (whole // 60) % 60
     h = whole // 3600
@@ -128,6 +124,11 @@ def burn_subtitles(video_path: Path, srt_path: Path, out_path: Path) -> None:
     vf = f"subtitles='{srt_escaped}':force_style='FontName=Arial,FontSize=18,Outline=1,Shadow=0,MarginV=28'"
     cmd = ["ffmpeg", "-y", "-i", str(video_path), "-vf", vf, "-c:a", "copy", str(out_path)]
     subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+
+@app.get("/api/health", response_model=HealthResponse)
+def health() -> HealthResponse:
+    return HealthResponse(ok=True, whisper_ready=WhisperModel is not None, ffmpeg_ready=ffmpeg_ready())
 
 
 @app.post("/api/subtitle")
@@ -224,3 +225,6 @@ def download(filename: str):
     elif path.suffix == ".mp4":
         media_type = "video/mp4"
     return FileResponse(str(path), media_type=media_type, filename=path.name)
+
+
+app.mount("/", StaticFiles(directory=str(STATIC_DIR), html=True), name="static")
